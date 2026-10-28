@@ -102,6 +102,47 @@ export default function App() {
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }
   }, [panel])
 
+  // Automatically enter the uninterrupted aquarium view after two minutes without input.
+  // Any genuine activity reveals the controls and starts a fresh inactivity window.
+  useEffect(() => {
+    let timeout: number | undefined
+    const clearTimer = () => {
+      if (timeout !== undefined) window.clearTimeout(timeout)
+      timeout = undefined
+    }
+    const scheduleHide = () => {
+      clearTimer()
+      if (!document.hidden) {
+        timeout = window.setTimeout(() => {
+          setHidden(true)
+          setPanel(null)
+        }, 120_000)
+      }
+    }
+    const onActivity = (event: Event) => {
+      if (event.type === 'keydown') {
+        const key = (event as KeyboardEvent).key.toLowerCase()
+        // Preserve the app's H/Escape shortcut semantics instead of overriding them.
+        if (key === 'h' || key === 'escape') { scheduleHide(); return }
+      }
+      setHidden(value => value ? false : value)
+      scheduleHide()
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) clearTimer()
+      else scheduleHide()
+    }
+    const activityEvents: Array<keyof DocumentEventMap> = ['pointermove', 'pointerdown', 'keydown', 'touchstart', 'wheel']
+    activityEvents.forEach(type => document.addEventListener(type, onActivity, { passive: true }))
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    scheduleHide()
+    return () => {
+      clearTimer()
+      activityEvents.forEach(type => document.removeEventListener(type, onActivity))
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
   useEffect(() => {
     if (!notice) return
     const timeout = window.setTimeout(() => setNotice(''), 6000)
