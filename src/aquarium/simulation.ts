@@ -15,7 +15,9 @@ export const SPECIES = [
   { name: 'Cuttlefish', size: 0.25, speed: 0.017, level: 0.55, range: 0.10 },
 ] as const
 
-export const TANK = { left: 0.145, right: 0.855, top: 0.245, bottom: 0.715, front: 0.045, back: 0.955 }
+// Open-reef swim volume: nearly the whole view, bounded by the world box in
+// resolveRocks. The old values traced the photographed tank's water region.
+export const TANK = { left: 0.03, right: 0.97, top: 0.06, bottom: 0.94, front: 0.03, back: 0.97 }
 export interface Swimmer {
   x: number; y: number; vx: number; vy: number; vz: number; species: number; depth: number
   size: number; phase: number; facing: number; targetX: number; targetY: number
@@ -38,7 +40,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 /** One individual per species: increasing population never creates a duplicate. */
 export function createSchool(count: number, random = Math.random): Swimmer[] {
   return SPECIES.slice(0, clamp(Math.floor(count), 0, SPECIES.length)).map((species, index) => {
-    const x = 0.20 + random() * 0.60
+    const x = 0.08 + random() * 0.84
     const y = clamp(species.level + (random() - 0.5) * species.range, TANK.top, TANK.bottom)
     const direction = random() > 0.5 ? 1 : -1
     const depth = TANK.front + random() * (TANK.back - TANK.front)
@@ -53,9 +55,17 @@ export function createSchool(count: number, random = Math.random): Swimmer[] {
     resolveRocks(swimmer)
     // A spawn inside overlapping rocks can be wedged against the floor. Relocate
     // that initial position to an open lane before its first rendered frame.
-    if (ROCKS.some(rock => rockDistance(swimmer.x, swimmer.y, swimmer.depth, rock, bodyClearance(swimmer.size)) < 1.005)) {
+    const insideRock = () => ROCKS.some(rock => rockDistance(swimmer.x, swimmer.y, swimmer.depth, rock, bodyClearance(swimmer.size)) < 1.005)
+    if (insideRock()) {
       const margin = bodyClearance(swimmer.size) / AXES.depth
       swimmer.depth = depth < 0.5 ? margin : 1 - margin
+      resolveRocks(swimmer)
+      if (insideRock()) {
+        // Tall back reefs can occupy the far lane too; the front lane sits
+        // ahead of every envelope front edge, so it is clear by construction.
+        swimmer.depth = margin
+        resolveRocks(swimmer)
+      }
     }
     return swimmer
   })
