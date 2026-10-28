@@ -23,7 +23,7 @@ npm run preview
 
 ## Deploy to GitHub Pages
 
-Repository: [ronpicard/fish-tank-simulator](https://github.com/ronpicard/fish-tank-simulator). Live site: [Pelagic](https://ronpicard.github.io/fish-tank-simulator/).
+Repository: [glichy2048/fish-tank-simulator](https://github.com/glichy2048/fish-tank-simulator). Live site: [Pelagic](https://glichy2048.github.io/fish-tank-simulator/).
 
 Every push to `main` runs `.github/workflows/deploy.yml`, which installs locked dependencies, runs the simulation tests, builds the app, and publishes `dist` to GitHub Pages. A failed test or build prevents publication. Local commits deploy once pushed to GitHub.
 
