@@ -41,6 +41,7 @@ The workflow follows the [official Vite GitHub Pages deployment guide](https://v
 - Text and controls start hidden. Use the faint eye icon or **H** to reveal them.
 - Sound is enabled by default: a softly mixed, seamless loop of a real aquarium filter, recorded by [DudeAwesome](https://freesound.org/people/DudeAwesome/sounds/386023/) ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)). Autoplay is attempted immediately. If the browser blocks it, the first click/tap or ordinary keypress starts it. **M** mutes or unmutes. A mute choice is respected by subsequent clicks. The recording is bundled with the app; playback needs no connection to Freesound. Credits are also available in Settings.
 - Adjust current, ambient light, and fish population with the sliders. Defaults are gentle current (0.5×), 70% ambient light, and twelve swimming animals; Reset restores these values. Surface crests move at a faster, steady pace independent of the current slider and stop when the reef is paused.
+- After two minutes without pointer, touch, wheel, or keyboard activity, the controls automatically fade away for an uninterrupted aquarium screensaver. Moving the pointer or interacting restores them; the timer pauses while the tab is hidden.
 - Pause the reef, go fullscreen, or hide the controls for an uninterrupted view.
 - Keyboard: **Space** pauses, **M** toggles sound, **F** toggles fullscreen, **H** hides/shows controls, **Escape** closes a panel or restores controls.
 
