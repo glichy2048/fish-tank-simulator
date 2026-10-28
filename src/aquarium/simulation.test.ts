@@ -84,7 +84,9 @@ test('a delayed background frame cannot teleport the fish', () => {
 test('every species explores both the front and back without crossing a rock', () => {
   const fish = createSchool(SPECIES.length, seededRandom(83))
   const depths = fish.map(f => ({ min: f.depth, max: f.depth }))
-  for (let frame = 0; frame < 18000; frame++) {
+  // The open reef is wider than the old tank, so the slowest species need a
+  // longer window to random-walk across it; the assertions are unchanged.
+  for (let frame = 0; frame < 36000; frame++) {
     stepSchool(fish, 1 / 30, frame / 30, 1.8)
     fish.forEach((f, i) => {
       depths[i].min = Math.min(depths[i].min, f.depth)

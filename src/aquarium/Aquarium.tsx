@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { createFishModel, createCreatureModel, type AnimalModel } from './animalModels'
-import { createSchool, createBottomLife, seededRandom, stepSchool, stepBottomLife, SPECIES, type Swimmer } from './simulation'
+import { createSchool, createBottomLife, stepSchool, stepBottomLife, SPECIES, type Swimmer } from './simulation'
 import { BOTTOM_SIZES, FOOT_HEIGHTS, substrateAt } from './bottomLife'
 import { AXES, WORLD, worldPosition } from './tankLayout'
-import { vertexShader, reefFragment, foregroundFragment, particleVertex, particleFragment } from './shaders'
+import { vertexShader } from './shaders'
+import { createReefScene, type ReefScene } from './reef'
 
 export type Mood = 'day' | 'dusk' | 'night'
 export interface AquariumOptions { paused: boolean; mood: Mood; current: number; population: number; light: number }
@@ -34,14 +35,14 @@ class Reef {
   targetRotation = new THREE.Quaternion()
   surfaceNormal = new THREE.Vector3()
   shadowNormal = new THREE.Vector3(0, 0, 1)
-  textures: THREE.Texture[] = []
-  background: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | null = null
-  foreground: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | null = null
-  particles: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null
+  reefScene: ReefScene | null = null
   aspect = 1
   time = 0
-  surfaceTime = 0
   mood = 0
+  fogDay = new THREE.Color(0x0b5a86)
+  fogDusk = new THREE.Color(0x3a4a6b)
+  fogNight = new THREE.Color(0x030d1a)
+  fogColor = new THREE.Color()
   frame = 0
   previous = 0
   disposed = false
@@ -53,12 +54,12 @@ class Reef {
     this.onError = onError
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
-    this.renderer.setClearColor(0x100f0f)
+    this.renderer.setClearColor(0x0a4a6e)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 0.96
-    this.scene.fog = new THREE.Fog(0x082939, 4.8, 14)
-    this.renderer.domElement.setAttribute('aria-label', 'A glass aquarium with twelve swimming species including a lionfish, betta, and cuttlefish, a shrimp, snail and hermit crab exploring the reef in depth, and a starfish resting on the sand')
+    this.scene.fog = new THREE.Fog(0x0b5a86, 6, 16)
+    this.renderer.domElement.setAttribute('aria-label', 'A sunlit coral reef with twelve swimming species including a lionfish, betta, and cuttlefish, a shrimp, snail and hermit crab on the sand, and a starfish resting near the coral')
     this.renderer.domElement.setAttribute('role', 'img')
     this.renderer.domElement.addEventListener('webglcontextlost', this.contextLost)
     container.appendChild(this.renderer.domElement)
@@ -79,36 +80,14 @@ class Reef {
   }
 
   async load() {
-    const loader = new THREE.TextureLoader()
-    // Track each successful load immediately so partial failures can also be disposed.
-    const loadTexture = async (name: string) => {
-      const texture = await loader.loadAsync(assets + name)
-      if (this.disposed) texture.dispose()
-      else this.textures.push(texture)
-      return texture
-    }
-    const reef = await loadTexture('home-tank.png')
     if (this.disposed) return
-    this.background = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-      vertexShader, fragmentShader: reefFragment,
-      uniforms: {
-        uTexture: { value: reef }, uTime: { value: 0 }, uSurfaceTime: { value: 0 }, uMood: { value: 0 }, uLight: { value: 1 },
-      }, depthWrite: false,
-    }))
-    this.background.position.z = -5
-    this.background.renderOrder = -10
-    this.background.scale.set(this.aspect * this.viewHalfHeight(-5), this.viewHalfHeight(-5), 1)
-    this.scene.add(this.background)
-    // The original artwork stays still. A masked copy at reef depth lets the
-    // depth buffer hide distant fish while nearby fish swim across the same rocks.
-    this.foreground = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-      vertexShader, fragmentShader: foregroundFragment,
-      uniforms: { uTexture: { value: reef }, uMood: { value: 0 }, uLight: { value: 1 } },
-      depthTest: true, depthWrite: true,
-    }))
-    this.foreground.position.z = -0.55
-    this.foreground.scale.set(this.aspect * this.viewHalfHeight(-0.55), this.viewHalfHeight(-0.55), 1)
-    this.scene.add(this.foreground)
+    // The reef is procedural now: rock, coral, sand, and seaweed meshes built
+    // from the same envelopes the fish steer around. Real 3D occlusion
+    // replaces the old masked photograph, so distant fish hide behind coral
+    // instead of behind a flat cutout. The photograph remains only as the
+    // static fallback behind the canvas if WebGL fails to start.
+    this.reefScene = createReefScene()
+    this.scene.add(this.reefScene.group)
 
     this.swimmers.forEach(swimmer => {
       const model = createFishModel(swimmer.species)
@@ -129,31 +108,7 @@ class Reef {
       this.contactShadows.push(shadow)
       this.scene.add(shadow)
     }
-    const random = seededRandom(123)
-    const positions = [], sizes = [], phases = []
-    for (let i = 0; i < 28; i++) {
-      positions.push(random() * 2 - 1, random() * 2 - 1, 0)
-      sizes.push(1.3 + random() * 2.1)
-      phases.push(random())
-    }
-    const particleGeometry = new THREE.BufferGeometry()
-    particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    particleGeometry.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1))
-    particleGeometry.setAttribute('aPhase', new THREE.Float32BufferAttribute(phases, 1))
-    this.particles = new THREE.Points(particleGeometry, new THREE.ShaderMaterial({
-      vertexShader: particleVertex, fragmentShader: particleFragment,
-      uniforms: { uTime: { value: 0 }, uPixelRatio: { value: this.renderer.getPixelRatio() }, uAspect: { value: this.aspect } },
-      transparent: true, depthWrite: false,
-    }))
-    this.particles.scale.setScalar(this.viewHalfHeight(0))
-    this.particles.frustumCulled = false
-    this.particles.renderOrder = 20
-    this.scene.add(this.particles)
     this.animate(performance.now())
-  }
-
-  viewHalfHeight(z: number) {
-    return Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * (this.camera.position.z - z)
   }
 
   resize = () => {
@@ -162,11 +117,6 @@ class Reef {
     this.camera.aspect = this.aspect
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(width, height)
-    if (this.background) {
-      this.background.scale.set(this.aspect * this.viewHalfHeight(-5), this.viewHalfHeight(-5), 1)
-    }
-    if (this.foreground) this.foreground.scale.set(this.aspect * this.viewHalfHeight(-0.55), this.viewHalfHeight(-0.55), 1)
-    if (this.particles) this.particles.material.uniforms.uAspect.value = this.aspect
   }
 
   contextLost = (event: Event) => {
@@ -193,29 +143,21 @@ class Reef {
     const activeFish = this.swimmers.slice(0, population)
     if (!paused) {
       this.time += dt * current
-      // Surface crests keep their pace even with a gentle underwater current.
-      this.surfaceTime += dt
       stepSchool(activeFish, dt, this.time, current)
       stepBottomLife(this.bottomLife, dt, current)
     }
-    if (this.background) {
-      this.background.material.uniforms.uTime.value = this.time
-      this.background.material.uniforms.uSurfaceTime.value = this.surfaceTime
-      this.background.material.uniforms.uMood.value = this.mood
-      this.background.material.uniforms.uLight.value = light
-    }
-    if (this.foreground) {
-      this.foreground.material.uniforms.uMood.value = this.mood
-      this.foreground.material.uniforms.uLight.value = light
-    }
+    if (this.reefScene) this.reefScene.update(this.time, this.mood, light)
     const night = Math.max(0, this.mood - 1)
+    // Water color follows the mood: bright reef blue by day, warm dusk, dark night.
+    this.fogColor.copy(this.fogDay).lerp(this.fogDusk, Math.min(this.mood, 1)).lerp(this.fogNight, night)
+    ;(this.scene.fog as THREE.Fog).color.copy(this.fogColor)
     // Animal reflections dim with the water.
-    this.scene.environmentIntensity = light * (1 - night * 0.82)
-    this.keyLight.intensity = light * (1.45 - this.mood * 0.30)
-    this.fillLight.intensity = light * (0.30 - night * 0.12)
-    this.rimLight.intensity = light * (0.75 - night * 0.30)
-    this.ambient.intensity = light * (0.42 - night * 0.18)
-    this.keyLight.color.set(this.mood > 1 ? 0x91b9f5 : this.mood > 0.4 ? 0xffd4b8 : 0xe5f1ff)
+    this.scene.environmentIntensity = light * (1 - night * 0.8)
+    this.keyLight.intensity = light * (2.1 - this.mood * 0.7)
+    this.fillLight.intensity = light * (0.5 - night * 0.15)
+    this.rimLight.intensity = light * (0.9 - night * 0.3)
+    this.ambient.intensity = light * (0.6 - night * 0.2)
+    this.keyLight.color.set(this.mood > 1 ? 0x8fb8e8 : this.mood > 0.4 ? 0xffd2a0 : 0xeaf7ff)
     this.fish.forEach((model, i) => {
       const mesh = model.root
       mesh.visible = i < population
@@ -262,7 +204,6 @@ class Reef {
       shadow.scale.set(size * (i === 3 ? 0.9 : 0.75), size * (i === 3 ? 0.9 : 0.42), 1)
       model.animate(animal.localTime, animal.activity)
     })
-    if (this.particles) this.particles.material.uniforms.uTime.value = this.time
     this.renderer.render(this.scene, this.camera)
     if (!document.hidden) this.frame = requestAnimationFrame(this.animate)
   }
@@ -286,7 +227,6 @@ class Reef {
     geometries.forEach(geometry => geometry.dispose())
     materials.forEach(material => material.dispose())
     this.environment?.dispose()
-    this.textures.forEach(texture => texture.dispose())
     this.scene.clear()
     this.renderer.dispose()
     this.renderer.domElement.remove()

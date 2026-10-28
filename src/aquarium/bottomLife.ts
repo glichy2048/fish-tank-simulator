@@ -1,27 +1,15 @@
-import { AXES, WORLD, ROCKS, worldPosition } from './tankLayout.ts'
+import { AXES, reefGroundHeight, worldPosition } from './tankLayout.ts'
 
 export const BOTTOM_SIZES = [0.215, 0.135, 0.16, 0.225] as const
 export const FOOT_HEIGHTS = [0.20, 0.18, 0.31, 0.013] as const
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 
-/** A smooth approximation of the static photographed sand and rock surfaces. */
-function groundHeight(worldX: number, worldZ: number) {
-  let height = WORLD.floor
-  for (const rock of ROCKS) {
-    const q = ((worldX - rock.center[0]) / (rock.radius[0] * 1.2)) ** 2
-      + ((worldZ - rock.center[2]) / (rock.radius[2] * 1.25)) ** 2
-    if (q >= 1.8) continue
-    const t = 1 - q / 1.8
-    const rise = (rock.center[1] + rock.radius[1] - WORLD.floor) * t * t * (3 - 2 * t)
-    height = Math.max(height, WORLD.floor + rise)
-  }
-  return height
-}
+/** Feet follow the same analytic ground the visible reef floor is built from. */
 export function substrateAt(x: number, depth: number) {
   const p = worldPosition(x, 0.5, depth), epsilon = 0.004
-  const y = groundHeight(p.x, p.z)
-  const dx = (groundHeight(p.x + epsilon, p.z) - groundHeight(p.x - epsilon, p.z)) / (epsilon * 2)
-  const dz = (groundHeight(p.x, p.z + epsilon) - groundHeight(p.x, p.z - epsilon)) / (epsilon * 2)
+  const y = reefGroundHeight(p.x, p.z)
+  const dx = (reefGroundHeight(p.x + epsilon, p.z) - reefGroundHeight(p.x - epsilon, p.z)) / (epsilon * 2)
+  const dz = (reefGroundHeight(p.x, p.z + epsilon) - reefGroundHeight(p.x, p.z - epsilon)) / (epsilon * 2)
   const length = Math.hypot(dx, 1, dz)
   return { y, nx: -dx / length, ny: 1 / length, nz: -dz / length }
 }
